@@ -8,7 +8,7 @@ const app = express();
 
 // Enhanced CORS configuration
 app.use(cors({
-  origin: ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000", "https://plag-detector-next-psi.vercel.app"],
+  origin: ["http://localhost:3000", "http://localhost:3001", "http://127.0.0.1:3000"],
   methods: ["GET", "POST"],
   credentials: true
 }));
@@ -76,24 +76,67 @@ io.on("connection", (socket) => {
   });
 
   // Handle real-time transcript updates from candidate to interviewer
-  socket.on("transcript-update", ({ roomId, transcript, timestamp }) => {
-    console.log(`🎙️ Real-time transcript in room ${roomId}: ${transcript.substring(0, 50)}...`);
+  socket.on("transcript-update", ({ roomId, transcript, timestamp, questionId, questionText }) => {
+    console.log(`🎙️ Real-time transcript in room ${roomId}: ${(transcript || "").substring(0, 50)}...`);
     // Send transcript to all other participants in the room (interviewer)
     socket.to(roomId).emit("transcript-update", {
       transcript,
       timestamp,
+      questionId: questionId ?? null,
+      questionText: questionText ?? "",
       from: socket.id
     });
   });
 
   // Handle question asked by interviewer
-  socket.on("question-asked", ({ roomId, question }) => {
+  socket.on("question-asked", ({ roomId, question, previousQuestionId, previousQuestionText }) => {
     console.log(`❓ Question asked in room ${roomId}: ${question.questiontext?.substring(0, 50)}...`);
     // Broadcast question to all other participants (interviewee)
     socket.to(roomId).emit("question-asked", {
       question,
+      previousQuestionId: previousQuestionId ?? null,
+      previousQuestionText: previousQuestionText ?? "",
       from: socket.id
     });
+  });
+
+  // Typed answer sync (candidate ↔ interviewer)
+  socket.on("typed-answer-update", ({ roomId, questionId, typedAnswer, meta, timestamp }) => {
+    socket.to(roomId).emit("typed-answer-update", {
+      questionId,
+      typedAnswer,
+      meta: meta ?? null,
+      timestamp,
+      from: socket.id
+    });
+  });
+
+  // Typed answers flush handshake before report generation
+  socket.on("request-typed-answers", ({ roomId, requestId }) => {
+    socket.to(roomId).emit("request-typed-answers", {
+      requestId,
+      from: socket.id
+    });
+  });
+
+  socket.on("typed-answers-response", ({ roomId, requestId, typedMap, typedMetaMap, status, timestamp }) => {
+    socket.to(roomId).emit("typed-answers-response", {
+      requestId,
+      typedMap,
+      typedMetaMap: typedMetaMap ?? null,
+      status,
+      timestamp,
+      from: socket.id
+    });
+  });
+
+  // Transcription flush handshake before report generation
+  socket.on("force-transcription-flush", ({ roomId, reason }) => {
+    socket.to(roomId).emit("force-transcription-flush", { reason, from: socket.id });
+  });
+
+  socket.on("transcription-flush-ack", ({ roomId, requestId, status }) => {
+    socket.to(roomId).emit("transcription-flush-ack", { requestId, status, from: socket.id });
   });
 
   // Handle answer submitted by interviewee
