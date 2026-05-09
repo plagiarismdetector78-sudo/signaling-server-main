@@ -162,6 +162,19 @@ io.on("connection", (socket) => {
     });
   });
 
+  // Tab / window focus loss (candidate ↔ interviewer integrity sync)
+  socket.on("tab-switch-detected", ({ roomId, count, timestamp, role }) => {
+    if (!roomId) return;
+    // Only candidate tab switches are monitored / forwarded
+    if (role !== "candidate") return;
+    socket.to(roomId).emit("tab-switch-detected", {
+      count,
+      timestamp,
+      role: "candidate",
+      from: socket.id,
+    });
+  });
+
 
   socket.on("disconnect", () => {
     console.log(`❌ User disconnected: ${socket.id}`);
